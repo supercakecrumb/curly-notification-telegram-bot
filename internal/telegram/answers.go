@@ -1,4 +1,4 @@
-package bot
+package telegram
 
 const (
 	startText = `<b>Hi, fella!</b> 👋
@@ -42,8 +42,8 @@ function rwtn {
 
     curl -X POST -H "Content-Type: application/json" -d "{
         \"text\": \"$TELEGRAM_NOTIFIER_MESSAGE\",
-        \"telegram_id\": \"{YOUR_TELEGRAM_ID}\",
-        \"telegram_password\": \"{YOUR_TELEGRAM_PASSWORD}\"
+        \"telegram_id\": \"%v\",
+        \"telegram_password\": \"%v\"
     }" https://{YOUR_SERVER}/send_notification
 }
 </pre>`
