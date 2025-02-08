@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	TelegramToken  string
-	LogLevel       string
-	AdminTelgramID int64
+	TelegramToken   string
+	LogLevel        string
+	AdminTelgramID  int64
+	TransformerSeed string
 }
 
 func LoadConfig() (*Config, error) {
@@ -18,9 +19,11 @@ func LoadConfig() (*Config, error) {
 		fmt.Println("Error:", err)
 		return nil, err
 	}
+
 	return &Config{
-		TelegramToken:  os.Getenv("TELEGRAM_TOKEN"),
-		LogLevel:       os.Getenv("LOG_LEVEL"),
-		AdminTelgramID: adminTgID,
+		TelegramToken:   os.Getenv("TELEGRAM_TOKEN"),
+		LogLevel:        os.Getenv("LOG_LEVEL"),
+		TransformerSeed: os.Getenv("TRANSFORMER_SEED"),
+		AdminTelgramID:  adminTgID,
 	}, nil
 }
