@@ -7,6 +7,7 @@ import (
 	th "github.com/mymmrac/telego/telegohandler"
 	tu "github.com/mymmrac/telego/telegoutil"
 	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/config"
+	st "github.com/supercakecrumb/curly-notification-telegram-bot/internal/securetransformer"
 )
 
 type Bot struct {
@@ -14,6 +15,7 @@ type Bot struct {
 	logger *slog.Logger
 	config *config.Config
 	bh     *th.BotHandler
+	st     *st.SecureTransformer
 }
 
 func NewBot(token string, logger *slog.Logger, config *config.Config) (*Bot, error) {
