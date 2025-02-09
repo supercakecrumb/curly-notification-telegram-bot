@@ -5,6 +5,10 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_run:
+    workflows: [ "Run Go Tests" ]
+    types:
+      - completed
 
 jobs:
 
