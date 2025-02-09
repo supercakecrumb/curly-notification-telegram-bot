@@ -10,6 +10,8 @@ func (b *Bot) registerCommands() {
 	// Register command handlers
 	b.bh.Handle(b.handleStart, th.CommandEqual("start"))
 	b.bh.Handle(b.handleHelp, th.CommandEqual("help"))
+
+	b.bh.Handle(b.handleGetScript, th.CommandEqual("getbashscript"))
 }
 
 // Handle /start command
@@ -18,12 +20,13 @@ func (b *Bot) handleStart(bot *telego.Bot, update telego.Update) {
 
 	welcomeMessage := startText
 
-	msg := tu.Message(
-		tu.ID(chatID),
-		welcomeMessage,
-	)
+	msg := telego.SendMessageParams{
+		ChatID:    tu.ID(chatID),
+		Text:      welcomeMessage,
+		ParseMode: telego.ModeHTML,
+	}
 
-	_, err := bot.SendMessage(msg)
+	_, err := bot.SendMessage(&msg)
 	if err != nil {
 		b.logger.Error("Failed to send start message", "error", err)
 	}
@@ -35,12 +38,13 @@ func (b *Bot) handleHelp(bot *telego.Bot, update telego.Update) {
 
 	helpMessage := helpText
 
-	msg := tu.Message(
-		tu.ID(chatID),
-		helpMessage,
-	)
+	msg := telego.SendMessageParams{
+		ChatID:    tu.ID(chatID),
+		Text:      helpMessage,
+		ParseMode: telego.ModeHTML,
+	}
 
-	_, err := bot.SendMessage(msg)
+	_, err := bot.SendMessage(&msg)
 	if err != nil {
 		b.logger.Error("Failed to send start message", "error", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/logger"
 	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/types"
 	st "github.com/supercakecrumb/curly-notification-telegram-bot/internal/securetransformer"
 )
@@ -19,7 +20,8 @@ func TestSendNotification_Valid(t *testing.T) {
 
 	// 2. Create our Server
 	NotificationChan := make(chan types.NotificationRequest, 100)
-	srv := NewServer(transformer, NotificationChan)
+	logger := logger.New("debug")
+	srv := NewServer(logger, transformer, NotificationChan)
 
 	// 3. Create an HTTP test server, pointing to our handler
 	testServer := httptest.NewServer(http.HandlerFunc(srv.handleSendNotification))
@@ -55,7 +57,8 @@ func TestSendNotification_Valid(t *testing.T) {
 func TestSendNotification_InvalidPassword(t *testing.T) {
 	transformer := st.NewSecureTransformer("test_seed")
 	NotificationChan := make(chan types.NotificationRequest, 100)
-	srv := NewServer(transformer, NotificationChan)
+	logger := logger.New("debug")
+	srv := NewServer(logger, transformer, NotificationChan)
 
 	testServer := httptest.NewServer(http.HandlerFunc(srv.handleSendNotification))
 	defer testServer.Close()
@@ -85,7 +88,8 @@ func TestSendNotification_InvalidPassword(t *testing.T) {
 func TestSendNotification_EmptyTelegramID(t *testing.T) {
 	transformer := st.NewSecureTransformer("test_seed")
 	NotificationChan := make(chan types.NotificationRequest, 100)
-	srv := NewServer(transformer, NotificationChan)
+	logger := logger.New("debug")
+	srv := NewServer(logger, transformer, NotificationChan)
 
 	testServer := httptest.NewServer(http.HandlerFunc(srv.handleSendNotification))
 	defer testServer.Close()
@@ -114,7 +118,8 @@ func TestSendNotification_EmptyTelegramID(t *testing.T) {
 func TestSendNotification_EmptyPassword(t *testing.T) {
 	transformer := st.NewSecureTransformer("test_seed")
 	NotificationChan := make(chan types.NotificationRequest, 100)
-	srv := NewServer(transformer, NotificationChan)
+	logger := logger.New("debug")
+	srv := NewServer(logger, transformer, NotificationChan)
 
 	testServer := httptest.NewServer(http.HandlerFunc(srv.handleSendNotification))
 	defer testServer.Close()
@@ -143,7 +148,8 @@ func TestSendNotification_EmptyPassword(t *testing.T) {
 func TestSendNotification_EmptyText(t *testing.T) {
 	transformer := st.NewSecureTransformer("test_seed")
 	NotificationChan := make(chan types.NotificationRequest, 100)
-	srv := NewServer(transformer, NotificationChan)
+	logger := logger.New("debug")
+	srv := NewServer(logger, transformer, NotificationChan)
 
 	testServer := httptest.NewServer(http.HandlerFunc(srv.handleSendNotification))
 	defer testServer.Close()

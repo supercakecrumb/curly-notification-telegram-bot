@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -13,13 +14,15 @@ import (
 
 // Server wraps the HTTP logic and holds a reference to a SecureTransformer and a notification channel
 type Server struct {
+	logger           *slog.Logger
 	transformer      *st.SecureTransformer
 	NotificationChan chan types.NotificationRequest
 }
 
 // NewServer constructs a Server that uses the given transformer and has a notification channel
-func NewServer(transformer *st.SecureTransformer, ch chan types.NotificationRequest) *Server {
+func NewServer(logger *slog.Logger, transformer *st.SecureTransformer, ch chan types.NotificationRequest) *Server {
 	return &Server{
+		logger:           logger,
 		transformer:      transformer,
 		NotificationChan: ch, // Buffered channel, capacity = 100
 	}

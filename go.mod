@@ -2,7 +2,10 @@ module github.com/supercakecrumb/curly-notification-telegram-bot
 
 go 1.23.4
 
-require github.com/mymmrac/telego v0.32.0
+require (
+	github.com/joho/godotenv v1.5.1
+	github.com/mymmrac/telego v0.32.0
+)
 
 require (
 	github.com/andybalholm/brotli v1.1.1 // indirect

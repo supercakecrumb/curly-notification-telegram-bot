@@ -6,28 +6,34 @@ import (
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
 	tu "github.com/mymmrac/telego/telegoutil"
-	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/config"
+	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/types"
 	st "github.com/supercakecrumb/curly-notification-telegram-bot/internal/securetransformer"
 )
 
 type Bot struct {
-	bot    *telego.Bot
-	logger *slog.Logger
-	config *config.Config
-	bh     *th.BotHandler
-	st     *st.SecureTransformer
+	bot              *telego.Bot
+	logger           *slog.Logger
+	adminID          int64
+	apiDomain        string
+	bh               *th.BotHandler
+	st               *st.SecureTransformer
+	notificationChan chan types.NotificationRequest
+	transformer      *st.SecureTransformer
 }
 
-func NewBot(token string, logger *slog.Logger, config *config.Config) (*Bot, error) {
-	bot, err := telego.NewBot(config.TelegramToken)
+func NewBot(logger *slog.Logger, token, apiDomain string, adminID int64, transformer *st.SecureTransformer, ch chan types.NotificationRequest) (*Bot, error) {
+	bot, err := telego.NewBot(token)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Bot{
-		bot:    bot,
-		logger: logger,
-		config: config,
+		bot:              bot,
+		logger:           logger,
+		adminID:          adminID,
+		notificationChan: ch,
+		transformer:      transformer,
+		apiDomain:        apiDomain,
 	}, nil
 }
 
@@ -59,7 +65,7 @@ func (b *Bot) Start() {
 		th.PanicRecovery(),
 	)
 
-	// b.registerCommands()
+	b.registerCommands()
 
 	// b.registerAdminCommands()
 
@@ -79,7 +85,7 @@ func (b *Bot) Stop() {
 // NotifyAdmins sends a message to all admins
 func (b *Bot) NotifyAdmins(message string) {
 	_, err := b.bot.SendMessage(tu.Message(
-		tu.ID(b.config.AdminTelgramID),
+		tu.ID(b.adminID),
 		message,
 	))
 	if err != nil {

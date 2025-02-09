@@ -2,10 +2,15 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
+	"os"
 
 	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/config"
 	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/logger"
+	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/types"
 	st "github.com/supercakecrumb/curly-notification-telegram-bot/internal/securetransformer"
+	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/server"
+	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/telegram"
 )
 
 func main() {
@@ -18,4 +23,19 @@ func main() {
 	logger := logger.New(config.LogLevel)
 
 	secureTransformer := st.NewSecureTransformer(config.TransformerSeed)
+
+	notificationChan := make(chan types.NotificationRequest, 100)
+
+	bot, err := telegram.NewBot(logger, config.TelegramToken, config.ApiDomain, config.AdminTelgramID, secureTransformer, notificationChan)
+	if err != nil {
+		logger.Error("error initializing bot", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	bot.Start()
+	bot.StartNotificationListener()
+
+	server := server.NewServer(logger, secureTransformer, notificationChan)
+
+	server.Start(config.ApiDomain)
 }

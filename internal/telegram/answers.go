@@ -8,15 +8,15 @@ To get started, type <code>/help</code> to learn more about how to use me and wh
 
 	helpText = `<b>How to use me:</b>
 
-To get the Bash script, type <code>/getbashscript</code>. It will give you a function that sends a Telegram notification when it finishes execution.
+To get the Bash script, type /getbashscript. It will give you a function that sends a Telegram notification when it finishes execution.
 
 <b>Example usage:</b>
 
-<code>rwtn "echo hello-world"</code>  
+<pre>rwtn "echo hello-world"</pre>  
 This will execute <code>echo hello-world</code> and send you a message:  
 <i>Successfully executed: echo hello-world</i>
 
-<code>rwtn "fajlgjdlsjdkf"</code>  
+<pre>rwtn "fajlgjdlsjdkf"</pre>  
 This will probably send you:  
 <i>Failed to execute: fajlgjdlsjdkf</i>`
 
@@ -43,8 +43,8 @@ function rwtn {
     curl -X POST -H "Content-Type: application/json" -d "{
         \"text\": \"$TELEGRAM_NOTIFIER_MESSAGE\",
         \"telegram_id\": \"%v\",
-        \"telegram_password\": \"%v\"
-    }" https://{YOUR_SERVER}/send_notification
+        \"password\": \"%v\"
+    }" https://%v/send_notification
 }
 </pre>`
 )
