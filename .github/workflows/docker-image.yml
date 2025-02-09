@@ -8,9 +8,7 @@ on:
 
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -42,5 +40,5 @@ jobs:
         file: ./Dockerfile
         push: true          
         tags: |
-            ghcr.io/${{ github.repository_owner }}/curly-notifier-bot:latest
-            ghcr.io/${{ github.repository_owner }}/curly-notifier-bot:${{ steps.get_tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/curly-notification-telegram-bot:latest
+            ghcr.io/${{ github.repository_owner }}/curly-notification-telegram-bot:${{ steps.get_tag.outputs.tag }}
