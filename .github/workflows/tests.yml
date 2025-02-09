@@ -2,9 +2,11 @@ name: Run Go Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
+    tags:
+      - "v*"  # Runs when a tag like v1.0.0 is pushed
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
   workflow_dispatch:
 
 jobs:
