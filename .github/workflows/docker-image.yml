@@ -40,5 +40,5 @@ jobs:
         file: ./Dockerfile
         push: true          
         tags: |
-            ghcr.io/${{ github.repository_owner }}/otvali-xray-bot:latest
-            ghcr.io/${{ github.repository_owner }}/otvali-xray-bot:${{ steps.get_tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/curly-notifier-bot:latest
+            ghcr.io/${{ github.repository_owner }}/curly-notifier-bot:${{ steps.get_tag.outputs.tag }}
