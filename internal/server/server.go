@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/types"
 	st "github.com/supercakecrumb/curly-notification-telegram-bot/internal/securetransformer"
@@ -17,6 +19,7 @@ type Server struct {
 	logger           *slog.Logger
 	transformer      *st.SecureTransformer
 	NotificationChan chan types.NotificationRequest
+	server           *http.Server
 }
 
 // NewServer constructs a Server that uses the given transformer and has a notification channel
@@ -28,13 +31,40 @@ func NewServer(logger *slog.Logger, transformer *st.SecureTransformer, ch chan t
 	}
 }
 
-// Start starts the HTTP server on the provided address (e.g., ":8080") and registers the routes.
+// Start registers routes, creates an *http.Server, and serves until Stop() is called.
 func (s *Server) Start(addr string) {
-	http.HandleFunc("/send_notification", s.handleSendNotification)
+	mux := http.NewServeMux()
+
+	// Register your routes
+	mux.HandleFunc("/send_notification", s.handleSendNotification)
+
+	s.server = &http.Server{
+		Addr:    addr,
+		Handler: mux, // Use our mux with the handler
+	}
 
 	log.Printf("Server listening on %s", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	// ListenAndServe will block until the server is stopped or fails
+	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("ListenAndServe error: %v", err)
+	}
+}
+
+// Stop shuts down the server gracefully with a 1 second timeout.
+func (s *Server) Stop() {
+	if s.server == nil {
+		return // Server never started or already stopped
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	log.Println("Shutting down server...")
+
+	if err := s.server.Shutdown(ctx); err != nil {
+		log.Printf("Server Shutdown error: %v", err)
+	} else {
+		log.Println("Server stopped gracefully.")
 	}
 }
 

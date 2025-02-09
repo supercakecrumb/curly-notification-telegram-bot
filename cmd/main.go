@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/config"
 	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/logger"
@@ -32,10 +35,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	bot.Start()
-	bot.StartNotificationListener()
+	// Create a context that is cancelled on OS interrupt or terminate signal
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Start the bot in a separate goroutine
+	go func() {
+		logger.Info("Bot is starting...")
+		bot.Start()
+	}()
 
 	server := server.NewServer(logger, secureTransformer, notificationChan)
 
-	server.Start(config.ApiDomain)
+	go func() {
+		logger.Info("Server is starting...")
+		server.Start(config.ApiDomain) // blocks in this goroutine
+	}()
+
+	// Wait for the context to be cancelled (signal received)
+	<-ctx.Done()
+	logger.Info("Shutting down gracefully...")
+
+	// Stop the bot handler
+	bot.Stop()
+	server.Stop()
 }

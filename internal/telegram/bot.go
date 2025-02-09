@@ -67,6 +67,8 @@ func (b *Bot) Start() {
 
 	b.registerCommands()
 
+	b.StartNotificationListener()
+
 	// b.registerAdminCommands()
 
 	b.bh.Start()
