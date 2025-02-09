@@ -15,8 +15,9 @@ func (b *Bot) StartNotificationListener() {
 			chatID, err := strconv.ParseInt(note.TelegramID, 10, 64)
 
 			message := telego.SendMessageParams{
-				ChatID: tu.ID(chatID),
-				Text:   note.Text,
+				ChatID:    tu.ID(chatID),
+				Text:      note.Text,
+				ParseMode: telego.ModeHTML,
 			}
 
 			_, err = b.bot.SendMessage(&message)

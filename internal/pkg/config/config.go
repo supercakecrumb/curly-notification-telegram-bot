@@ -13,6 +13,7 @@ type Config struct {
 	LogLevel        string
 	AdminTelgramID  int64
 	TransformerSeed string
+	ListenOn        string
 	ApiDomain       string
 }
 
@@ -34,6 +35,7 @@ func LoadConfig() (*Config, error) {
 		TelegramToken:   os.Getenv("TELEGRAM_TOKEN"),
 		LogLevel:        os.Getenv("LOG_LEVEL"),
 		TransformerSeed: os.Getenv("TRANSFORMER_SEED"),
+		ListenOn:        os.Getenv("LISTEN_ON"),
 		ApiDomain:       os.Getenv("API_DOMAIN"),
 		AdminTelgramID:  adminTgID,
 	}, nil
