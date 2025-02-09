@@ -1,45 +1,44 @@
-
 name: Docker Image CI
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_run:
-    workflows: [ "Run Go Tests" ]
+    workflows: [ "Run Go Tests" ]  # Triggers when tests complete successfully
     types:
       - completed
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Git
-      run: git fetch --tags
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
 
-    - name: Get Git Tag
-      id: get_tag
-      run: |
-        TAG=$(git describe --tags --abbrev=0)
-        echo "::set-output name=tag::$TAG"
-    - name: Log in to GHCR
-      uses: docker/login-action@v3.3.0
-      with:
-        registry: ghcr.io
-        username: ${{ github.repository_owner }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Git
+        run: git fetch --tags
+
+      - name: Get Git Tag
+        id: get_tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0)
+          echo "tag=$TAG" >> $GITHUB_ENV  # Store tag for later use
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         
-    - name: Build and Push Docker Image
-      uses: docker/build-push-action@v6.11.0
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true          
-        tags: |
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true          
+          tags: |
             ghcr.io/${{ github.repository_owner }}/curly-notifier-bot:latest
-            ghcr.io/${{ github.repository_owner }}/curly-notifier-bot:${{ steps.get_tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/curly-notifier-bot:${{ env.tag }}
