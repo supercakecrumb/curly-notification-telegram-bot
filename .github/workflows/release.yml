@@ -32,6 +32,14 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-latest
+    env:
+      # Hoisted so the deploy steps can ask whether CI deployment is wired
+      # at all. An EMPTY DOKPLOY_COMPOSE_ID means "not wired yet" and the
+      # deploy is skipped; a SET one that doesn't resolve is still a hard
+      # failure, which is the fail-fast the kit template intends.
+      DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+      DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
+      DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -95,11 +103,8 @@ jobs:
 
       # FAIL FAST if the service's infra isn't provisioned in Dokploy.
       - name: Preflight — infrastructure must be provisioned
-        if: ${{ !env.ACT }}
+        if: ${{ !env.ACT && env.DOKPLOY_COMPOSE_ID != '' }}
         env:
-          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
-          DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
-          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
           REQUIRE_ENV: ${{ vars.REQUIRE_ENV }}   # optional, e.g. DATABASE_URL
         run: |
           set -euo pipefail
@@ -116,11 +121,8 @@ jobs:
 
       # Deploy, then BLOCK until the new deployment converges healthy (or fail red).
       - name: Deploy and wait until healthy
-        if: ${{ !env.ACT }}
+        if: ${{ !env.ACT && env.DOKPLOY_COMPOSE_ID != '' }}
         env:
-          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
-          DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
-          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
           HEALTH_URL: ${{ vars.HEALTH_URL }}     # optional, web apps: https://<app>.aurorass.art/health
         run: |
           set -euo pipefail
@@ -156,3 +158,8 @@ jobs:
             echo "::error::$HEALTH_URL never returned 200 within the timeout."; exit 1
           fi
           echo "Deployment converged; Swarm HEALTHCHECK passed — service healthy, CI green."
+
+      - name: Note — CI deploy not wired
+        if: ${{ !env.ACT && env.DOKPLOY_COMPOSE_ID == '' }}
+        run: |
+          echo "::notice::Image pushed and release created, but DOKPLOY_COMPOSE_ID is not set, so no deploy was triggered. Set DOKPLOY_URL / DOKPLOY_API_TOKEN / DOKPLOY_COMPOSE_ID to enable CI deployment."
