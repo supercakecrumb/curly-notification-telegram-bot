@@ -1,0 +1,30 @@
+version: "2"
+
+# Mirrors snagbox's config so both services lint identically. snagbox's
+# internal/web exclusion is omitted — curly serves no HTML templates.
+
+linters:
+  default: standard
+  enable:
+    - unconvert
+    - unparam
+    - misspell
+    - gocritic
+    - revive
+  settings:
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true
+  exclusions:
+    rules:
+      # Table-driven fakes in tests intentionally shadow parameter names
+      # without using them; that's interface satisfaction, not a real bug.
+      - path: _test\.go
+        linters:
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

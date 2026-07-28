@@ -1,0 +1,157 @@
+name: Release
+
+# Vendored from private-infra-kit. Triggered by pushing a tag "v*":
+#   build + push ghcr.io/<owner>/<repo>  ->  GitHub Release (notes from CHANGELOG)
+#   ->  Dokploy preflight gate  ->  deploy  ->  block until healthy.
+#
+# Release notes come verbatim from the tag's CHANGELOG.md section, which the
+# release process is expected to have populated via `changie batch <version>` +
+# `changie merge` BEFORE the tag was pushed.
+#
+# Registry + deploy steps are guarded with `if: ${{ !env.ACT }}` so `act` can
+# validate the workflow without real credentials.
+#
+# Required repo SECRETS:   DOKPLOY_URL, DOKPLOY_API_TOKEN, DOKPLOY_APP_ID
+# Optional repo VARIABLES: REQUIRE_ENV=DATABASE_URL (DB services),
+#                          HEALTH_URL=https://<app>.aurorass.art/health (web apps)
+# Multi-service (Dokploy Compose) apps: swap application.deploy -> compose.deploy,
+# applicationId -> composeId, application.one -> compose.one, and
+# deployment.all?applicationId= -> deployment.allByCompose?composeId=.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # create the GitHub Release
+  packages: write   # push to GHCR
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        if: ${{ !env.ACT }}
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        if: ${{ !env.ACT }}
+        uses: docker/setup-buildx-action@v4
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Build and push image
+        if: ${{ !env.ACT }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## " ver { found=1; next }
+            found && /^## / { found=0 }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "::error::No CHANGELOG.md section for tag $VERSION. Run \`changie batch $VERSION\` and \`changie merge\`, commit that, then tag." >&2
+            exit 1
+          fi
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        if: ${{ !env.ACT }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release_notes.md
+
+      # FAIL FAST if the service's infra isn't provisioned in Dokploy.
+      - name: Preflight — infrastructure must be provisioned
+        if: ${{ !env.ACT }}
+        env:
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
+          DOKPLOY_APP_ID: ${{ secrets.DOKPLOY_APP_ID }}
+          REQUIRE_ENV: ${{ vars.REQUIRE_ENV }}   # optional, e.g. DATABASE_URL
+        run: |
+          set -euo pipefail
+          [ -n "${DOKPLOY_APP_ID:-}" ] || { echo "::error::DOKPLOY_APP_ID secret is empty — the Dokploy app for this service doesn't exist yet. Provision it (see the wiki deploy-todos) before releasing."; exit 1; }
+          code=$(curl -sS -o app.json -w '%{http_code}' -H "x-api-key: $DOKPLOY_API_TOKEN" \
+                 "$DOKPLOY_URL/api/application.one?applicationId=$DOKPLOY_APP_ID")
+          [ "$code" = "200" ] || { echo "::error::Infrastructure missing: Dokploy has no application '$DOKPLOY_APP_ID' (HTTP $code)."; exit 1; }
+          # optional: prove a required env var (usually DATABASE_URL) was actually wired
+          if [ -n "${REQUIRE_ENV:-}" ]; then
+            jq -e --arg k "$REQUIRE_ENV" '((.env // "") | split("\n") | map(split("=")[0]) | index($k)) != null' app.json >/dev/null \
+              || { echo "::error::Required env '$REQUIRE_ENV' is not set on the Dokploy app — its database/infra isn't wired."; exit 1; }
+          fi
+          echo "Infra OK: application $DOKPLOY_APP_ID exists and is configured."
+
+      # Deploy, then BLOCK until the new deployment converges healthy (or fail red).
+      - name: Deploy and wait until healthy
+        if: ${{ !env.ACT }}
+        env:
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
+          DOKPLOY_APP_ID: ${{ secrets.DOKPLOY_APP_ID }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}     # optional, web apps: https://<app>.aurorass.art/health
+        run: |
+          set -euo pipefail
+          api() { curl -sS -H "x-api-key: $DOKPLOY_API_TOKEN" "$@"; }
+          # remember the newest deployment so we track OURS, not a stale one (race-free)
+          before=$(api "$DOKPLOY_URL/api/deployment.all?applicationId=$DOKPLOY_APP_ID" | jq -r 'sort_by(.createdAt)|last|.deploymentId // ""')
+          echo "Triggering deploy (previous deployment: ${before:-none})…"
+          api -X POST "$DOKPLOY_URL/api/application.deploy" -H "Content-Type: application/json" \
+              -d "{\"applicationId\":\"$DOKPLOY_APP_ID\"}" >/dev/null
+          deadline=$((SECONDS+900))
+          while :; do
+            read -r id status < <(api "$DOKPLOY_URL/api/deployment.all?applicationId=$DOKPLOY_APP_ID" \
+              | jq -r 'sort_by(.createdAt)|last|"\(.deploymentId // "") \(.status // "")"')
+            if [ -n "$id" ] && [ "$id" != "$before" ]; then
+              echo "  deployment $id: $status"
+              [ "$status" = "done" ]  && break
+              [ "$status" = "error" ] && { echo "::error::Deployment $id failed — check Dokploy logs."; exit 1; }
+            else
+              echo "  waiting for the new deployment to register…"
+            fi
+            [ $SECONDS -lt $deadline ] || { echo "::error::Timed out waiting for the deployment to finish."; exit 1; }
+            sleep 10
+          done
+          # Web apps: also require the public health endpoint to answer 200 end-to-end.
+          if [ -n "${HEALTH_URL:-}" ]; then
+            echo "Probing $HEALTH_URL …"
+            for _ in $(seq 1 30); do
+              code=$(curl -sS -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo 000)
+              echo "  GET $HEALTH_URL -> $code"
+              [ "$code" = "200" ] && { echo "Healthy — CI green."; exit 0; }
+              sleep 10
+            done
+            echo "::error::$HEALTH_URL never returned 200 within the timeout."; exit 1
+          fi
+          echo "Deployment converged; Swarm HEALTHCHECK passed — service healthy, CI green."
