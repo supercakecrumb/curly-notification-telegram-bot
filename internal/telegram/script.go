@@ -31,7 +31,10 @@ func (b *Bot) handleGetScript(bot *telego.Bot, update telego.Update) {
 
 	script, err := renderBashScript(scriptData)
 	if err != nil {
+		// Without this return we would send the user an empty message and
+		// they would have no idea their helper failed to render.
 		b.logger.Error("error rendering bash script", slog.String("error", err.Error()))
+		return
 	}
 
 	msg := telego.SendMessageParams{

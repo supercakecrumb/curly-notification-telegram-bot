@@ -1,11 +1,14 @@
 package telegram
 
 import (
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
 	tu "github.com/mymmrac/telego/telegoutil"
+
 	"github.com/supercakecrumb/curly-notification-telegram-bot/internal/pkg/types"
 	st "github.com/supercakecrumb/curly-notification-telegram-bot/internal/securetransformer"
 )
@@ -16,9 +19,9 @@ type Bot struct {
 	adminID          int64
 	apiDomain        string
 	bh               *th.BotHandler
-	st               *st.SecureTransformer
 	notificationChan chan types.NotificationRequest
 	transformer      *st.SecureTransformer
+	senderDone       chan struct{}
 }
 
 func NewBot(logger *slog.Logger, token, apiDomain string, adminID int64, transformer *st.SecureTransformer, ch chan types.NotificationRequest) (*Bot, error) {
@@ -34,66 +37,76 @@ func NewBot(logger *slog.Logger, token, apiDomain string, adminID int64, transfo
 		notificationChan: ch,
 		transformer:      transformer,
 		apiDomain:        apiDomain,
+		senderDone:       make(chan struct{}),
 	}, nil
 }
 
-func (b *Bot) Start() {
-	b.logger.Info("Starting bot...")
-
-	// Notify admins about the shutdown
+// Start runs the interactive command handler and blocks until Stop is called.
+//
+// It deliberately does NOT own the notification sender: relaying a notification
+// only needs the Telegram API client, not long polling, so the caller starts
+// StartNotificationListener separately. That way a long-polling failure — a
+// second instance holding the same bot token, say — costs us /start and /help
+// but still delivers every notification.
+func (b *Bot) Start() error {
+	b.logger.Info("starting bot")
 	b.NotifyAdmins("⚠️ The bot is starting.")
 
-	// Use UpdatesViaLongPolling to handle updates
 	updates, err := b.bot.UpdatesViaLongPolling(nil)
 	if err != nil {
-		b.logger.Error("Failed to start long polling", slog.String("error", err.Error()))
-		return
+		return fmt.Errorf("start long polling: %w", err)
 	}
-
-	// Create bot handler and specify from where to get updates
-	b.bh, err = th.NewBotHandler(b.bot, updates)
-	if err != nil {
-		b.logger.Error("Failed to create new bot handler", slog.String("error", err.Error()))
-		return
-	}
-
-	defer b.bh.Stop()
 	defer b.bot.StopLongPolling()
 
-	// Middleware in case of panic and no username
-	b.bh.Use(
-		th.PanicRecovery(),
-	)
+	b.bh, err = th.NewBotHandler(b.bot, updates)
+	if err != nil {
+		return fmt.Errorf("create bot handler: %w", err)
+	}
+	defer b.bh.Stop()
+
+	// Middleware in case of panic
+	b.bh.Use(th.PanicRecovery())
 
 	b.registerCommands()
 
-	b.StartNotificationListener()
-
-	// b.registerAdminCommands()
-
 	b.bh.Start()
+	return nil
 }
 
+// Stop halts the command handler. It is safe to call even when Start failed
+// before the handler existed — b.bh is nil in that case, and calling Stop on it
+// used to panic during shutdown.
 func (b *Bot) Stop() {
-	b.logger.Info("Stopping bot...")
-
-	// Notify admins about the shutdown
+	b.logger.Info("stopping bot")
 	b.NotifyAdmins("⚠️ The bot is stopping. Please check the server for details.")
 
-	// Stop the bot handler
-	b.bh.Stop()
+	if b.bh != nil {
+		b.bh.Stop()
+	}
 }
 
-// NotifyAdmins sends a message to all admins
+// WaitSender blocks until the notification sender has drained its channel, or
+// until timeout elapses. Call it after closing the notification channel so
+// queued messages still get delivered during a graceful shutdown.
+func (b *Bot) WaitSender(timeout time.Duration) {
+	select {
+	case <-b.senderDone:
+		b.logger.Info("notification sender drained")
+	case <-time.After(timeout):
+		b.logger.Warn("timed out waiting for notification sender to drain",
+			slog.Duration("timeout", timeout))
+	}
+}
+
+// NotifyAdmins sends a message to the admin chat.
 func (b *Bot) NotifyAdmins(message string) {
 	_, err := b.bot.SendMessage(tu.Message(
 		tu.ID(b.adminID),
 		message,
 	))
 	if err != nil {
-		b.logger.Error("Failed to notify admin", slog.String("error", err.Error()))
-	} else {
-		b.logger.Info("Notified admin")
+		b.logger.Error("failed to notify admin", slog.String("error", err.Error()))
+		return
 	}
-
+	b.logger.Info("notified admin")
 }

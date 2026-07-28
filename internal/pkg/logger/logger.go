@@ -10,10 +10,14 @@ func New(level string) *slog.Logger {
 	switch level {
 	case "debug":
 		logLevel = slog.LevelDebug
-	case "info":
-		logLevel = slog.LevelInfo
+	case "warn":
+		logLevel = slog.LevelWarn
+	case "error":
+		logLevel = slog.LevelError
 	default:
-		logLevel = slog.LevelDebug
+		// Unset or unrecognised means info. It used to mean debug, so a
+		// production deploy that simply omitted LOG_LEVEL logged everything.
+		logLevel = slog.LevelInfo
 	}
 
 	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})

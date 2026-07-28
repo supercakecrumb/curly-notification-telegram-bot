@@ -32,14 +32,3 @@ func (s *SecureTransformer) Encode(value int64) string {
 	// Convert to Base64 for readability
 	return base64.URLEncoding.EncodeToString(hash)
 }
-
-func main() {
-	// Example usage
-	seed := "my_super_secret_seed"
-	transformer := NewSecureTransformer(seed)
-
-	value := int64(123456789)
-	encodedString := transformer.Encode(value)
-
-	fmt.Println("Encoded:", encodedString)
-}
