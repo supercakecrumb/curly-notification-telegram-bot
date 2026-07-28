@@ -11,12 +11,13 @@ name: Release
 # Registry + deploy steps are guarded with `if: ${{ !env.ACT }}` so `act` can
 # validate the workflow without real credentials.
 #
-# Required repo SECRETS:   DOKPLOY_URL, DOKPLOY_API_TOKEN, DOKPLOY_APP_ID
+# Required repo SECRETS:   DOKPLOY_URL, DOKPLOY_API_TOKEN, DOKPLOY_COMPOSE_ID
 # Optional repo VARIABLES: REQUIRE_ENV=DATABASE_URL (DB services),
 #                          HEALTH_URL=https://<app>.aurorass.art/health (web apps)
-# Multi-service (Dokploy Compose) apps: swap application.deploy -> compose.deploy,
-# applicationId -> composeId, application.one -> compose.one, and
-# deployment.all?applicationId= -> deployment.allByCompose?composeId=.
+# curly deploys as a Dokploy COMPOSE (the pattern every platform service on the
+# box uses), so this file already carries the compose-shaped swap the kit
+# template documents: compose.deploy / composeId / compose.one /
+# deployment.allByCompose.
 
 on:
   push:
@@ -98,20 +99,20 @@ jobs:
         env:
           DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
           DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
-          DOKPLOY_APP_ID: ${{ secrets.DOKPLOY_APP_ID }}
+          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
           REQUIRE_ENV: ${{ vars.REQUIRE_ENV }}   # optional, e.g. DATABASE_URL
         run: |
           set -euo pipefail
-          [ -n "${DOKPLOY_APP_ID:-}" ] || { echo "::error::DOKPLOY_APP_ID secret is empty — the Dokploy app for this service doesn't exist yet. Provision it (see the wiki deploy-todos) before releasing."; exit 1; }
+          [ -n "${DOKPLOY_COMPOSE_ID:-}" ] || { echo "::error::DOKPLOY_COMPOSE_ID secret is empty — the Dokploy compose for this service doesn't exist yet. Provision it (see the wiki deploy-todos) before releasing."; exit 1; }
           code=$(curl -sS -o app.json -w '%{http_code}' -H "x-api-key: $DOKPLOY_API_TOKEN" \
-                 "$DOKPLOY_URL/api/application.one?applicationId=$DOKPLOY_APP_ID")
-          [ "$code" = "200" ] || { echo "::error::Infrastructure missing: Dokploy has no application '$DOKPLOY_APP_ID' (HTTP $code)."; exit 1; }
+                 "$DOKPLOY_URL/api/compose.one?composeId=$DOKPLOY_COMPOSE_ID")
+          [ "$code" = "200" ] || { echo "::error::Infrastructure missing: Dokploy has no compose '$DOKPLOY_COMPOSE_ID' (HTTP $code)."; exit 1; }
           # optional: prove a required env var (usually DATABASE_URL) was actually wired
           if [ -n "${REQUIRE_ENV:-}" ]; then
             jq -e --arg k "$REQUIRE_ENV" '((.env // "") | split("\n") | map(split("=")[0]) | index($k)) != null' app.json >/dev/null \
-              || { echo "::error::Required env '$REQUIRE_ENV' is not set on the Dokploy app — its database/infra isn't wired."; exit 1; }
+              || { echo "::error::Required env '$REQUIRE_ENV' is not set on the Dokploy compose — its database/infra isn't wired."; exit 1; }
           fi
-          echo "Infra OK: application $DOKPLOY_APP_ID exists and is configured."
+          echo "Infra OK: compose $DOKPLOY_COMPOSE_ID exists and is configured."
 
       # Deploy, then BLOCK until the new deployment converges healthy (or fail red).
       - name: Deploy and wait until healthy
@@ -119,19 +120,19 @@ jobs:
         env:
           DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
           DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
-          DOKPLOY_APP_ID: ${{ secrets.DOKPLOY_APP_ID }}
+          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
           HEALTH_URL: ${{ vars.HEALTH_URL }}     # optional, web apps: https://<app>.aurorass.art/health
         run: |
           set -euo pipefail
           api() { curl -sS -H "x-api-key: $DOKPLOY_API_TOKEN" "$@"; }
           # remember the newest deployment so we track OURS, not a stale one (race-free)
-          before=$(api "$DOKPLOY_URL/api/deployment.all?applicationId=$DOKPLOY_APP_ID" | jq -r 'sort_by(.createdAt)|last|.deploymentId // ""')
+          before=$(api "$DOKPLOY_URL/api/deployment.allByCompose?composeId=$DOKPLOY_COMPOSE_ID" | jq -r 'sort_by(.createdAt)|last|.deploymentId // ""')
           echo "Triggering deploy (previous deployment: ${before:-none})…"
-          api -X POST "$DOKPLOY_URL/api/application.deploy" -H "Content-Type: application/json" \
-              -d "{\"applicationId\":\"$DOKPLOY_APP_ID\"}" >/dev/null
+          api -X POST "$DOKPLOY_URL/api/compose.deploy" -H "Content-Type: application/json" \
+              -d "{\"composeId\":\"$DOKPLOY_COMPOSE_ID\"}" >/dev/null
           deadline=$((SECONDS+900))
           while :; do
-            read -r id status < <(api "$DOKPLOY_URL/api/deployment.all?applicationId=$DOKPLOY_APP_ID" \
+            read -r id status < <(api "$DOKPLOY_URL/api/deployment.allByCompose?composeId=$DOKPLOY_COMPOSE_ID" \
               | jq -r 'sort_by(.createdAt)|last|"\(.deploymentId // "") \(.status // "")"')
             if [ -n "$id" ] && [ "$id" != "$before" ]; then
               echo "  deployment $id: $status"
