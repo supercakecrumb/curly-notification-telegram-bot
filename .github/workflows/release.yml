@@ -107,16 +107,21 @@ jobs:
         env:
           REQUIRE_ENV: ${{ vars.REQUIRE_ENV }}   # optional, e.g. DATABASE_URL
         run: |
+          set +x
           set -euo pipefail
           [ -n "${DOKPLOY_COMPOSE_ID:-}" ] || { echo "::error::DOKPLOY_COMPOSE_ID secret is empty — the Dokploy compose for this service doesn't exist yet. Provision it (see the wiki deploy-todos) before releasing."; exit 1; }
-          code=$(curl -sS -o app.json -w '%{http_code}' -H "x-api-key: $DOKPLOY_API_TOKEN" \
+          # Keep the configuration response in memory and the API key out of argv.
+          response=$(curl -sS -w $'\n%{http_code}' -H @<(printf 'x-api-key: %s\n' "$DOKPLOY_API_TOKEN") \
                  "$DOKPLOY_URL/api/compose.one?composeId=$DOKPLOY_COMPOSE_ID")
+          code="${response##*$'\n'}"
+          app_json="${response%$'\n'*}"
           [ "$code" = "200" ] || { echo "::error::Infrastructure missing: Dokploy has no compose '$DOKPLOY_COMPOSE_ID' (HTTP $code)."; exit 1; }
           # optional: prove a required env var (usually DATABASE_URL) was actually wired
           if [ -n "${REQUIRE_ENV:-}" ]; then
-            jq -e --arg k "$REQUIRE_ENV" '((.env // "") | split("\n") | map(split("=")[0]) | index($k)) != null' app.json >/dev/null \
+            printf '%s' "$app_json" | jq -e --arg k "$REQUIRE_ENV" '((.env // "") | split("\n") | map(split("=")[0]) | index($k)) != null' >/dev/null \
               || { echo "::error::Required env '$REQUIRE_ENV' is not set on the Dokploy compose — its database/infra isn't wired."; exit 1; }
           fi
+          unset response app_json
           echo "Infra OK: compose $DOKPLOY_COMPOSE_ID exists and is configured."
 
       # Deploy, then BLOCK until the new deployment converges healthy (or fail red).
@@ -125,8 +130,9 @@ jobs:
         env:
           HEALTH_URL: ${{ vars.HEALTH_URL }}     # optional, web apps: https://<app>.aurorass.art/health
         run: |
+          set +x
           set -euo pipefail
-          api() { curl -sS -H "x-api-key: $DOKPLOY_API_TOKEN" "$@"; }
+          api() { curl -sS -H @<(printf 'x-api-key: %s\n' "$DOKPLOY_API_TOKEN") "$@"; }
           # remember the newest deployment so we track OURS, not a stale one (race-free)
           before=$(api "$DOKPLOY_URL/api/deployment.allByCompose?composeId=$DOKPLOY_COMPOSE_ID" | jq -r 'sort_by(.createdAt)|last|.deploymentId // ""')
           echo "Triggering deploy (previous deployment: ${before:-none})…"
